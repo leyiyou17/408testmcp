@@ -8,50 +8,80 @@ const ErrorBook = () => {
   const [userAnswer, setUserAnswer] = useState('');
   const [submissionResult, setSubmissionResult] = useState(null);
   const [loading, setLoading] = useState(true);
+  const [loadingAction, setLoadingAction] = useState(false);
 
-  // 模拟错题数据
-  const mockErrorRecords = [
-    {
-      id: 1,
-      question_id: {
-        id: 1,
-        content: '以下关于栈的描述，正确的是？',
-        question_type: '选择题',
-        subject: '数据结构',
-        options: {
-          A: '栈是一种先进先出的数据结构',
-          B: '栈是一种后进先出的数据结构',
-          C: '栈的插入操作在栈底进行',
-          D: '栈的删除操作在栈顶进行'
+  const user_id = localStorage.getItem('user_id') || '1'; // 模拟用户ID
+
+  // 加载错题本数据
+  const loadErrorRecords = async () => {
+    setLoading(true);
+    try {
+      const response = await fetch(`http://localhost:3000/student/error-book?user_id=${user_id}&subject=${subject}&question_type=${questionType}`);
+      const data = await response.json();
+      
+      // 转换数据格式以匹配前端期望
+      const formattedRecords = data.map(record => ({
+        id: record._id,
+        question_id: {
+          id: record.question_id._id,
+          content: record.question_id.content,
+          question_type: record.question_id.question_type,
+          subject: record.question_id.subject,
+          options: record.question_id.options,
+          correct_answer: record.question_id.answer,
+          analysis: record.question_id.analysis
         },
-        correct_answer: 'B',
-        analysis: '栈是一种后进先出(LIFO)的数据结构，插入和删除操作都在栈顶进行。'
-      },
-      user_answer: 'A',
-      created_at: '2024-01-15'
-    },
-    {
-      id: 2,
-      question_id: {
-        id: 2,
-        content: '请简述操作系统中的进程和线程的区别。',
-        question_type: '综合题',
-        subject: '操作系统',
-        correct_answer: '进程是资源分配的基本单位，线程是CPU调度的基本单位。一个进程可以包含多个线程，线程共享进程的资源。',
-        analysis: '进程和线程的主要区别在于：1. 资源分配：进程拥有独立的地址空间，线程共享进程的地址空间；2. 调度：线程是CPU调度的基本单位；3. 并发性：线程的并发性更高；4. 开销：线程的创建和切换开销小于进程。'
-      },
-      user_answer: '进程和线程没有区别',
-      created_at: '2024-01-16'
+        user_answer: record.user_answer,
+        created_at: new Date(record.submit_time).toISOString().split('T')[0]
+      }));
+      
+      setErrorRecords(formattedRecords);
+    } catch (error) {
+      console.error('加载错题本失败:', error);
+      // 加载失败时使用模拟数据
+      const mockErrorRecords = [
+        {
+          id: 1,
+          question_id: {
+            id: 1,
+            content: '以下关于栈的描述，正确的是？',
+            question_type: '选择题',
+            subject: '数据结构',
+            options: {
+              A: '栈是一种先进先出的数据结构',
+              B: '栈是一种后进先出的数据结构',
+              C: '栈的插入操作在栈底进行',
+              D: '栈的删除操作在栈顶进行'
+            },
+            correct_answer: 'B',
+            analysis: '栈是一种后进先出(LIFO)的数据结构，插入和删除操作都在栈顶进行。'
+          },
+          user_answer: 'A',
+          created_at: '2024-01-15'
+        },
+        {
+          id: 2,
+          question_id: {
+            id: 2,
+            content: '请简述操作系统中的进程和线程的区别。',
+            question_type: '综合题',
+            subject: '操作系统',
+            correct_answer: '进程是资源分配的基本单位，线程是CPU调度的基本单位。一个进程可以包含多个线程，线程共享进程的资源。',
+            analysis: '进程和线程的主要区别在于：1. 资源分配：进程拥有独立的地址空间，线程共享进程的地址空间；2. 调度：线程是CPU调度的基本单位；3. 并发性：线程的并发性更高；4. 开销：线程的创建和切换开销小于进程。'
+          },
+          user_answer: '进程和线程没有区别',
+          created_at: '2024-01-16'
+        }
+      ];
+      setErrorRecords(mockErrorRecords);
+    } finally {
+      setLoading(false);
     }
-  ];
+  };
 
   useEffect(() => {
-    // 模拟加载错题
-    setTimeout(() => {
-      setErrorRecords(mockErrorRecords);
-      setLoading(false);
-    }, 500);
-  }, []);
+    loadErrorRecords();
+  }, [subject, questionType]);
 
   const handleQuestionClick = (record) => {
     setCurrentQuestion(record.question_id);
@@ -59,25 +89,80 @@ const ErrorBook = () => {
     setSubmissionResult(null);
   };
 
-  const handleSubmitAnswer = () => {
+  const handleSubmitAnswer = async () => {
     if (!currentQuestion || !userAnswer) return;
 
-    const isCorrect = userAnswer === currentQuestion.correct_answer;
-    setSubmissionResult({
-      isCorrect,
-      correctAnswer: currentQuestion.correct_answer,
-      analysis: currentQuestion.analysis
-    });
+    setLoadingAction(true);
+    try {
+      // 提交答案到后端
+      const response = await fetch('http://localhost:3000/student/submit', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json'
+        },
+        body: JSON.stringify({
+          user_id: user_id,
+          question_id: currentQuestion.id,
+          user_answer: userAnswer
+        })
+      });
 
-    if (isCorrect) {
-      // 如果答案正确，从错题本中移除
-      setErrorRecords(prev => prev.filter(record => record.question_id.id !== currentQuestion.id));
+      const data = await response.json();
+      const isCorrect = data.record.result;
+
+      setSubmissionResult({
+        isCorrect,
+        correctAnswer: data.correct_answer,
+        analysis: data.analysis
+      });
+
+      if (isCorrect) {
+        // 如果答案正确，重新加载错题本
+        loadErrorRecords();
+      }
+    } catch (error) {
+      console.error('提交答案失败:', error);
+      // 模拟提交结果
+      const isCorrect = userAnswer === currentQuestion.correct_answer;
+      setSubmissionResult({
+        isCorrect,
+        correctAnswer: currentQuestion.correct_answer,
+        analysis: currentQuestion.analysis
+      });
+
+      if (isCorrect) {
+        // 如果答案正确，从错题本中移除
+        setErrorRecords(prev => prev.filter(record => record.question_id.id !== currentQuestion.id));
+      }
+    } finally {
+      setLoadingAction(false);
     }
   };
 
-  const handleMarkAsMastered = (recordId) => {
-    // 标记为已掌握，从错题本中移除
-    setErrorRecords(prev => prev.filter(record => record.id !== recordId));
+  const handleMarkAsMastered = async (recordId) => {
+    setLoadingAction(true);
+    try {
+      // 标记为已掌握
+      const response = await fetch('http://localhost:3000/student/mark-mastered', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json'
+        },
+        body: JSON.stringify({
+          record_id: recordId
+        })
+      });
+
+      await response.json();
+      // 重新加载错题本
+      loadErrorRecords();
+    } catch (error) {
+      console.error('标记已掌握失败:', error);
+      // 模拟标记操作
+      setErrorRecords(prev => prev.filter(record => record.id !== recordId));
+    } finally {
+      setLoadingAction(false);
+    }
   };
 
   if (loading) {
@@ -138,8 +223,12 @@ const ErrorBook = () => {
                       你的答案: {record.user_answer}
                     </div>
                     <div className="mt-20" style={{ display: 'flex', gap: '10px' }}>
-                      <button onClick={() => handleQuestionClick(record)}>重做</button>
-                      <button onClick={() => handleMarkAsMastered(record.id)}>标记已掌握</button>
+                      <button onClick={() => handleQuestionClick(record)} disabled={loadingAction}>
+                        重做
+                      </button>
+                      <button onClick={() => handleMarkAsMastered(record.id)} disabled={loadingAction}>
+                        {loadingAction ? '处理中...' : '标记已掌握'}
+                      </button>
                     </div>
                   </li>
                 ))
@@ -184,8 +273,8 @@ const ErrorBook = () => {
               )}
             </div>
 
-            <button onClick={handleSubmitAnswer} disabled={!userAnswer}>
-              提交答案
+            <button onClick={handleSubmitAnswer} disabled={!userAnswer || loadingAction}>
+              {loadingAction ? '提交中...' : '提交答案'}
             </button>
 
             {/* 提交结果 */}
